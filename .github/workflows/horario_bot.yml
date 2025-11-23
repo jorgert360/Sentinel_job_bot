@@ -1,0 +1,34 @@
+name: Bot Buscador de Empleo
+
+on:
+  schedule:
+    # Cron job: Se ejecuta cada 30 minutos
+    - cron: '*/30 * * * *'
+  # Esto permite que lo ejecutes manualmente con un clic para probar
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v3
+
+      - name: Instalar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar librerías
+        # Aquí nos aseguramos de instalar python-dotenv para que no falle
+        run: |
+          pip install -r requirements.txt
+          pip install python-dotenv
+
+      - name: Correr el Bot
+        env:
+          # Conectamos los secretos que ya guardaste
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python job_bot.py
