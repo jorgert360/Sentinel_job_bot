@@ -6,11 +6,9 @@ import google.generativeai as genai
 from datetime import datetime
 from dotenv import load_dotenv
 
-# --- 1. CONFIGURACIÓN SEGURA ---
-# Carga variables locales solo si existe el archivo .env (Pruebas en PC)
+# --- 1. CONFIGURACIÓN ---
 load_dotenv()
 
-# Lee las variables del entorno (Ya sea PC o GitHub Actions)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -21,107 +19,104 @@ if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel('gemini-2.5-flash')
     except Exception as e:
-        print(f"Error configurando IA: {e}")
+        print(f"Error IA: {e}")
 
-# --- 3. TU PERFIL PROFESIONAL ---
 MI_CV = """
 PERFIL: Desarrollador Junior Python & Especialista en Automatización (RPA).
-EXPERIENCIA:
-- Process Automation Analyst (2 años): Uso de Python (Pandas) y RPA para reducir 45% tiempos operativos en logística.
-- Experiencia previa en Logística y Aduanas (5+ años).
-HABILIDADES TÉCNICAS:
-- Lenguajes: Python, SQL, HTML/CSS.
-- Herramientas: RPA, APIs, Git, Azure (Basics).
-- Proyectos: Desarrollo de 'CV Automatic' (SaaS con IA) y bots de Telegram.
-EDUCACIÓN: Ingeniero en formación (IA y Ciencia de Datos - 4to semestre).
-BUSCO: Roles Junior, Remotos, enfocados en Backend, Automatización o Data. NO busco Senior, Lead o Architect.
+EXPERIENCIA: Process Automation Analyst (2 años), Logística (5+ años).
+STACK: Python, SQL, Git, APIs. PROYECTO: 'CV Automatic' (SaaS con IA).
+BUSCO: Junior, Remoto, Backend/Data/RPA. NO Senior/Lead.
 """
 
-# --- 4. FUENTES RSS ---
 URLS_FEEDS = [
     "https://www.getonboard.com/jobs/programming/rss",
     "https://remotive.com/remote-jobs/software-dev/feed",
     "https://jobspresso.co/feed/",
-    "https://www.google.com/alerts/feeds/12078001344154788465/10041778443779010464"
+   "https://www.google.com/alerts/feeds/12078001344154788465/10041778443779010464",
 ]
 
-ofertas_vistas = []
-
 def enviar_telegram(mensaje):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ Error: Faltan credenciales de Telegram")
-        return
-
+    if not TELEGRAM_TOKEN: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
     try:
         requests.post(url, data=data)
-    except Exception as e:
-        print(f"Error Telegram: {e}")
+    except: pass
 
 def analizar_con_ia(titulo, descripcion):
     if not GEMINI_API_KEY: return False, "Sin API Key"
     try:
         prompt = f"""
-        Actúa como reclutador tech. PERFIL: {MI_CV}
+        Actúa como reclutador. PERFIL: {MI_CV}
         VACANTE: {titulo} - {descripcion}
-        
-        TAREA:
+        REGLAS:
         1. Evalúa fit para Junior/RPA/Logística.
-        2. DESCARTA SI PIDEN: "Senior", "Lead", "Architect", "+4 años", "Java", "PHP", "Ruby".
-        3. Si probabilidad > 70%, responde "SI: [Razón breve]".
+        2. DESCARTA: Senior, Lead, +4 años, Java/Ruby/PHP.
+        3. Si probabilidad > 70%, responde "SI: [Razón]".
         4. Si no, "NO".
         """
         response = model.generate_content(prompt)
-        txt = response.text.strip()
-        if txt.upper().startswith("SI"):
-            return True, txt.replace("SI:", "").replace("Si:", "").strip()
+        if response.text.strip().upper().startswith("SI"):
+            return True, response.text.replace("SI:", "").strip()
         return False, ""
+    except: return False, ""
+
+def obtener_feed_seguro(url):
+    """Descarga el feed haciéndose pasar por un navegador"""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        return feedparser.parse(response.content)
     except Exception as e:
-        print(f"Error IA: {e}")
-        return False, ""
+        print(f"   Error descarga manual: {e}")
+        return None
 
 def main():
-    print(f"🚀 Ejecución GitHub Actions iniciada: {datetime.now().strftime('%H:%M')}...")
+    print(f"🚀 Bot 'Stealth' Iniciado: {datetime.now().strftime('%H:%M')}...")
     
-    # --- PRUEBA DE DIAGNÓSTICO (Solo corre si las claves están bien) ---
-    if TELEGRAM_TOKEN and GEMINI_API_KEY:
-        print("🧪 Verificando sistemas...")
-        match, razon = analizar_con_ia("Junior Python Dev", "Python automation junior role")
-        if match: print("✅ IA Operativa.")
-    else:
-        print("⚠️ ALERTA: No se detectaron las claves secretas. Revisa los Secrets de GitHub.")
-
-    # --- BÚSQUEDA ---
+    # Diagnóstico de llaves
+    if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
+        print("⚠️ ALERTA: Faltan las claves secretas en GitHub Secrets.")
+    
+    ofertas_encontradas = 0
+    
     for url in URLS_FEEDS:
         try:
-            print(f"📡 Leyendo: {url[:30]}...")
-            feed = feedparser.parse(url)
+            print(f"📡 Conectando a: {url[:30]}...")
             
-            # Solo las 5 más nuevas para ser rápido
-            nuevas_ofertas = feed.entries[:5]
+            # USAMOS LA NUEVA FUNCIÓN SEGURA
+            feed = obtener_feed_seguro(url)
             
-            for entry in nuevas_ofertas:
-                # Pre-filtro básico
+            if not feed or len(feed.entries) == 0:
+                print("   ⚠️ No se pudo leer contenido (Bloqueo o vacío).")
+                continue
+
+            print(f"   ↳ Encontradas: {len(feed.entries)} vacantes.")
+            
+            # Revisamos las 5 más recientes
+            for entry in feed.entries[:5]:
                 texto = (entry.title + " " + entry.get('summary', '')).lower()
+                
                 if not any(k in texto for k in ["python", "data", "automation", "rpa", "developer"]):
                     continue
 
-                # Análisis IA
-                print(f"   🤔 Analizando: {entry.title[:40]}...")
+                print(f"   🤔 IA Analizando: {entry.title[:40]}...")
                 match, razon = analizar_con_ia(entry.title, entry.get('summary', ''))
+                ofertas_encontradas += 1
                 
                 if match:
-                    print(f"   ✅ ¡MATCH!: {entry.title}")
+                    print(f"   ✅ MATCH: {entry.title}")
                     msg = f"🤖 **Oportunidad**\n💼 **{entry.title}**\n🧠 {razon}\n🔗 [Ver]({entry.link})"
                     enviar_telegram(msg)
                 
-                time.sleep(2) # Pausa técnica
+                time.sleep(2)
 
         except Exception as e:
-            print(f"🔥 Error en feed: {e}")
+            print(f"🔥 Error general en feed: {e}")
 
-    print("🏁 Escaneo finalizado.")
+    print(f"🏁 Fin del escaneo. Total analizadas por IA: {ofertas_encontradas}")
 
 if __name__ == "__main__":
     main()
